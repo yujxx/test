@@ -3,26 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MUSHRA Audio Test</title>
+    <title>MUSHRA Audio Tests</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 1000px;
+            font-family: system-ui, sans-serif;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
-        .test-section {
+        
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .page-btn {
+            padding: 8px 16px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .page-btn.active {
+            background: #2196F3;
+            color: white;
+        }
+
+        .waveform {
+            height: 200px;
+            background: #f5f5f5;
+            margin: 20px 0;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .waveform-progress {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 0;
+            background: rgba(33, 150, 243, 0.1);
+            transition: width 0.1s linear;
+        }
+
+        .test-page {
+            display: none;
+        }
+
+        .test-page.active {
+            display: block;
+        }
+
+        .audio-section {
             background: #f5f5f5;
             padding: 20px;
             border-radius: 8px;
-            margin: 20px 0;
+            margin: 10px 0;
         }
-        .audio-group {
+
+        .audio-controls {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin: 10px 0;
         }
+
         .play-btn {
             background: #4CAF50;
             color: white;
@@ -31,18 +78,24 @@
             border-radius: 4px;
             cursor: pointer;
         }
-        .play-btn:hover {
-            background: #45a049;
+
+        .rating-container {
+            position: relative;
+            padding: 20px 0;
         }
-        .slider-group {
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 10px;
+
+        .rating-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 14px;
         }
-        .slider {
+
+        .rating-slider {
             width: 100%;
         }
+
         .submit-btn {
             background: #2196F3;
             color: white;
@@ -53,68 +106,96 @@
             cursor: pointer;
             margin: 20px 0;
         }
-        .submit-btn:hover {
-            background: #1976D2;
-        }
-        .results {
-            white-space: pre;
-            background: #eee;
-            padding: 10px;
-            border-radius: 4px;
-            display: none;
-        }
     </style>
 </head>
 <body>
-    <h1>MUSHRA 音频评测</h1>
+    <h1>MUSHRA Audio Evaluation</h1>
     
-    <div class="test-section">
-        <h3>参考音频</h3>
-        <div class="audio-group">
-            <button class="play-btn" onclick="playAudio('reference')">播放</button>
-            <audio id="reference" src="YOUR_REFERENCE_AUDIO_URL"></audio>
-        </div>
+    <!-- Waveform Display -->
+    <div class="waveform">
+        <div id="waveform-progress" class="waveform-progress"></div>
+        <canvas id="waveform-canvas"></canvas>
     </div>
 
-    <div class="test-section">
-        <h3>测试音频</h3>
-        <div id="samples"></div>
-    </div>
+    <!-- Page Navigation -->
+    <div class="page-nav" id="page-nav"></div>
 
-    <button class="submit-btn" onclick="submitResults()">提交评分</button>
-    <pre id="results" class="results"></pre>
+    <!-- Test Pages Container -->
+    <div id="pages-container"></div>
+
+    <button class="submit-btn" onclick="submitResults()">Submit All Results</button>
 
     <script>
-        // 测试音频列表
-        const testSamples = [
-            { id: 'sample1', url: 'AUDIO_URL_1' },
-            { id: 'sample2', url: 'AUDIO_URL_2' },
-            // 添加更多测试音频...
+        // Test data structure
+        const testPages = [
+            {
+                id: 'page1',
+                reference: 'REF_AUDIO_URL_1',
+                samples: [
+                    {id: 'p1s1', url: 'SAMPLE_1_URL'},
+                    {id: 'p1s2', url: 'SAMPLE_2_URL'},
+                    {id: 'p1s3', url: 'SAMPLE_3_URL'},
+                    {id: 'p1s4', url: 'SAMPLE_4_URL'},
+                    {id: 'p1s5', url: 'SAMPLE_5_URL'}
+                ]
+            },
+            // Add more pages as needed
         ];
 
-        // 生成测试音频部分
-        const samplesContainer = document.getElementById('samples');
-        testSamples.forEach((sample, index) => {
-            const sampleHTML = `
-                <div>
-                    <div class="audio-group">
-                        <button class="play-btn" onclick="playAudio('${sample.id}')">播放</button>
-                        <audio id="${sample.id}" src="${sample.url}"></audio>
-                    </div>
-                    <div class="slider-group">
-                        <span>音质评分:</span>
-                        <input type="range" class="slider" id="score-${sample.id}" 
-                               min="0" max="100" value="50"
-                               oninput="updateScore('${sample.id}')">
-                        <span id="value-${sample.id}">50</span>
-                    </div>
-                </div>
-            `;
-            samplesContainer.insertAdjacentHTML('beforeend', sampleHTML);
+        const ratingLabels = ['Bad', 'Poor', 'Fair', 'Good', 'Excellent'];
+
+        // Generate page navigation
+        const pageNav = document.getElementById('page-nav');
+        testPages.forEach((page, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'page-btn' + (index === 0 ? ' active' : '');
+            btn.textContent = `Test ${index + 1}`;
+            btn.onclick = () => switchPage(index);
+            pageNav.appendChild(btn);
         });
 
-        // 播放音频
+        // Generate test pages
+        const pagesContainer = document.getElementById('pages-container');
+        testPages.forEach((page, pageIndex) => {
+            const pageHTML = `
+                <div id="${page.id}" class="test-page${pageIndex === 0 ? ' active' : ''}">
+                    <div class="audio-section">
+                        <h3>Reference Audio</h3>
+                        <div class="audio-controls">
+                            <button class="play-btn" onclick="playAudio('${page.id}-ref')">Play</button>
+                            <audio id="${page.id}-ref" src="${page.reference}" 
+                                   onplay="updateWaveform(this)" 
+                                   ontimeupdate="updateProgress(this)"></audio>
+                        </div>
+                    </div>
+
+                    ${page.samples.map((sample, index) => `
+                        <div class="audio-section">
+                            <h3>Test Sample ${index + 1}</h3>
+                            <div class="audio-controls">
+                                <button class="play-btn" onclick="playAudio('${sample.id}')">Play</button>
+                                <audio id="${sample.id}" src="${sample.url}"
+                                       onplay="updateWaveform(this)"
+                                       ontimeupdate="updateProgress(this)"></audio>
+                            </div>
+                            <div class="rating-container">
+                                <div class="rating-labels">
+                                    ${ratingLabels.map((label, i) => 
+                                        `<span>${label}</span>`).join('')}
+                                </div>
+                                <input type="range" class="rating-slider" 
+                                       id="rating-${sample.id}" 
+                                       min="0" max="100" step="1" value="50">
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            pagesContainer.insertAdjacentHTML('beforeend', pageHTML);
+        });
+
         let currentAudio = null;
+
         function playAudio(id) {
             if (currentAudio) {
                 currentAudio.pause();
@@ -124,28 +205,64 @@
             currentAudio.play();
         }
 
-        // 更新分数显示
-        function updateScore(id) {
-            const slider = document.getElementById(`score-${id}`);
-            const value = document.getElementById(`value-${id}`);
-            value.textContent = slider.value;
+        function switchPage(pageIndex) {
+            // Stop any playing audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+
+            // Update page visibility
+            document.querySelectorAll('.test-page').forEach(page => 
+                page.classList.remove('active'));
+            document.querySelectorAll('.page-btn').forEach(btn => 
+                btn.classList.remove('active'));
+
+            document.getElementById(testPages[pageIndex].id).classList.add('active');
+            document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
         }
 
-        // 提交结果
+        // Simulated waveform drawing
+        const canvas = document.getElementById('waveform-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function updateWaveform(audio) {
+            // Reset progress
+            document.getElementById('waveform-progress').style.width = '0%';
+            
+            // Simple waveform visualization (you would replace this with actual audio analysis)
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.strokeStyle = '#2196F3';
+            
+            // Generate random waveform (replace with actual audio data)
+            ctx.moveTo(0, canvas.height/2);
+            for(let x = 0; x < canvas.width; x++) {
+                ctx.lineTo(x, (canvas.height/2) + 
+                    Math.sin(x/30) * 30 * Math.random());
+            }
+            ctx.stroke();
+        }
+
+        function updateProgress(audio) {
+            const progress = (audio.currentTime / audio.duration) * 100;
+            document.getElementById('waveform-progress').style.width = `${progress}%`;
+        }
+
         function submitResults() {
             const results = {};
-            testSamples.forEach(sample => {
-                const score = document.getElementById(`score-${sample.id}`).value;
-                results[sample.id] = parseInt(score);
+            testPages.forEach(page => {
+                results[page.id] = {};
+                page.samples.forEach(sample => {
+                    const rating = document.getElementById(`rating-${sample.id}`).value;
+                    results[page.id][sample.id] = parseInt(rating);
+                });
             });
-            
-            // 显示结果
-            const resultsElement = document.getElementById('results');
-            resultsElement.style.display = 'block';
-            resultsElement.textContent = JSON.stringify(results, null, 2);
-
-            // 这里可以添加将结果发送到服务器的代码
             console.log('Test results:', results);
+            // Here you would add code to save or send the results
         }
     </script>
 </body>
