@@ -233,7 +233,7 @@
                         <div class="audio-controls">
                             <button class="play-btn" onclick="playAudio('${page.id}-ref')">Play</button>
                             <audio id="${page.id}-ref" src="reference/${page.audioIndex}.wav" 
-                                   onplay="updateWaveform(this)" 
+                                   onloadedmetadata="preloadAudioData(this)"
                                    ontimeupdate="updateProgress(this)"></audio>
                         </div>
                     </div>
@@ -353,21 +353,20 @@
                     currentAudio.currentTime = 0;
                 }
         
-                // 获取并播放新的音频
                 const audioElement = document.getElementById(id);
                 currentAudio = audioElement;
-                
-                // 显示波形图
-                await showWaveform(audioElement);
-                
-                // 直接播放音频
+        
+                // 确保音频数据已加载
+                const channelData = await preloadAudioData(audioElement);
+                drawWaveform(channelData);
+        
+                // 播放音频
                 await audioElement.play();
                 updateProgress(audioElement);
             } catch (error) {
                 console.error('播放失败:', error);
             }
         }
-
         async function showWaveform(audioElement) {
             try {
                 const response = await fetch(audioElement.src);
@@ -446,7 +445,28 @@
             document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
         }
 
-        function drawWaveform(dataPoints) {
+        // 预加载音频数据
+        async function preloadAudioData(audioElement) {
+            if (waveformCache.has(audioElement.src)) {
+                return waveformCache.get(audioElement.src);
+            }
+        
+            try {
+                const response = await fetch(audioElement.src);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                waveformCache.set(audioElement.src, channelData);
+                return channelData;
+            } catch (error) {
+                console.error('音频数据加载失败:', error);
+                return null;
+            }
+        }
+        
+        function drawWaveform(channelData) {
             const canvas = document.getElementById('waveform-canvas');
             const ctx = canvas.getContext('2d');
         
@@ -458,27 +478,32 @@
             ctx.fillStyle = '#f5f5f5';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-            if (!dataPoints || dataPoints.length === 0) return;
+            if (!channelData) return;
         
             // 绘制波形
             const width = canvas.width;
             const height = canvas.height;
-            const step = width / dataPoints.length;
-            const middleY = height / 2;
-            const scale = height / 2; // 缩放因子
+            const step = Math.ceil(channelData.length / width);
+            const amp = height / 2;
         
             ctx.beginPath();
             ctx.strokeStyle = '#2196F3';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
         
-            dataPoints.forEach((point, i) => {
-                const x = i * step;
-                const y = middleY + (point * scale);
-                const y2 = middleY - (point * scale);
-                
-                ctx.moveTo(x, middleY + (point * scale));
-                ctx.lineTo(x, middleY - (point * scale));
-            });
+            for (let i = 0; i < width; i++) {
+                let min = 1.0;
+                let max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const index = (i * step) + j;
+                    if (index < channelData.length) {
+                        const datum = channelData[index];
+                        if (datum < min) min = datum;
+                        if (datum > max) max = datum;
+                    }
+                }
+                ctx.moveTo(i, (1 + min) * amp);
+                ctx.lineTo(i, (1 + max) * amp);
+            }
         
             ctx.stroke();
         }
