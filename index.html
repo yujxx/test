@@ -37,9 +37,25 @@
             margin: 20px 0;
             border-radius: 8px;
             position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        }
+        
+        .waveform-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #waveform-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        
+        #waveform-canvas.active {
+            display: block;
         }
 
         .loading {
@@ -68,20 +84,6 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-
-        .waveform-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-
-        #waveform-canvas {
-            display: none;
-        }
-        
-        #waveform-canvas.active {
-            display: block;
         }
         
         .waveform-progress {
@@ -323,7 +325,6 @@
                         <div class="audio-controls">
                             <button class="play-btn" onclick="playAudio('${page.id}-ref')">Play</button>
                             <audio id="${page.id}-ref" src="reference/${page.audioIndex}.wav" 
-                                   onloadedmetadata="preloadAudioData(this)"
                                    ontimeupdate="updateProgress(this)"></audio>
                         </div>
                     </div>
@@ -398,43 +399,6 @@
         let currentAudio = null;
         const waveformCache = new Map();
 
-        // 获取音频波形数据
-        async function getAudioData(audioUrl) {
-            if (waveformCache.has(audioUrl)) {
-                return waveformCache.get(audioUrl);
-            }
-        
-            try {
-                const response = await fetch(audioUrl);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                // 获取音频数据
-                const channelData = audioBuffer.getChannelData(0);
-                const samples = 1000; // 采样点数
-                const blockSize = Math.floor(channelData.length / samples);
-                const dataPoints = [];
-        
-                for (let i = 0; i < samples; i++) {
-                    let blockStart = blockSize * i;
-                    let sum = 0;
-                    
-                    // 计算每个块的平均值
-                    for (let j = 0; j < blockSize; j++) {
-                        sum += Math.abs(channelData[blockStart + j]);
-                    }
-                    dataPoints.push(sum / blockSize);
-                }
-        
-                waveformCache.set(audioUrl, dataPoints);
-                return dataPoints;
-            } catch (error) {
-                console.error('Failed to load audio data:', error);
-                return null;
-            }
-        }
-
         async function playAudio(id) {
             try {
                 const audioElement = document.getElementById(id);
@@ -508,54 +472,6 @@
             canvas.classList.remove('active');
         }
         
-        async function showWaveform(audioElement) {
-            try {
-                const response = await fetch(audioElement.src);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                // 获取音频数据
-                const channelData = audioBuffer.getChannelData(0);
-                const canvas = document.getElementById('waveform-canvas');
-                const ctx = canvas.getContext('2d');
-        
-                // 设置画布尺寸
-                canvas.width = canvas.parentElement.clientWidth;
-                canvas.height = canvas.parentElement.clientHeight;
-        
-                // 清除画布
-                ctx.fillStyle = '#f5f5f5';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-                // 绘制波形
-                const width = canvas.width;
-                const height = canvas.height;
-                const step = Math.ceil(channelData.length / width);
-                const amp = height / 2;
-        
-                ctx.beginPath();
-                ctx.strokeStyle = '#2196F3';
-                ctx.lineWidth = 1;
-        
-                for (let i = 0; i < width; i++) {
-                    let min = 1.0;
-                    let max = -1.0;
-                    for (let j = 0; j < step; j++) {
-                        const datum = channelData[(i * step) + j];
-                        if (datum < min) min = datum;
-                        if (datum > max) max = datum;
-                    }
-                    ctx.moveTo(i, (1 + min) * amp);
-                    ctx.lineTo(i, (1 + max) * amp);
-                }
-        
-                ctx.stroke();
-            } catch (error) {
-                console.error('波形图生成失败:', error);
-            }
-        }
-        
         function updateRating(system, value) {
             const bar = document.getElementById(`bar-${system}`);
             const barValue = bar.querySelector('.rating-bar-value');
@@ -605,36 +521,18 @@
                 showLoading(false);
             }
         }
-        // 预加载音频数据
-        async function preloadAudioData(audioElement) {
-            if (waveformCache.has(audioElement.src)) {
-                return waveformCache.get(audioElement.src);
-            }
-        
-            try {
-                const response = await fetch(audioElement.src);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                const channelData = audioBuffer.getChannelData(0);
-                
-                waveformCache.set(audioElement.src, channelData);
-                return channelData;
-            } catch (error) {
-                console.error('音频数据加载失败:', error);
-                return null;
-            }
-        }
         
         function drawWaveform(channelData) {
             const canvas = document.getElementById('waveform-canvas');
             const ctx = canvas.getContext('2d');
         
-            // 设置画布尺寸
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight;
+            // 设置画布尺寸（使用 clientWidth 和 clientHeight）
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
         
             // 清除画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#f5f5f5';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         
@@ -669,7 +567,6 @@
         
             ctx.stroke();
         }
-
         function updateProgress(audio) {
             if (!audio.paused) {
                 const progress = (audio.currentTime / audio.duration) * 100;
