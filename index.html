@@ -37,8 +37,53 @@
             margin: 20px 0;
             border-radius: 8px;
             position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
+        .loading {
+            display: none;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196F3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .waveform-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #waveform-canvas {
+            display: none;
+        }
+        
+        #waveform-canvas.active {
+            display: block;
+        }
+        
         .waveform-progress {
             position: absolute;
             left: 0;
@@ -168,8 +213,14 @@
     
     <!-- Waveform Display -->
     <div class="waveform">
-        <div id="waveform-progress" class="waveform-progress"></div>
-        <canvas id="waveform-canvas"></canvas>
+        <div class="waveform-container">
+            <div id="waveform-progress" class="waveform-progress"></div>
+            <canvas id="waveform-canvas"></canvas>
+            <div class="loading" id="waveform-loading">
+                <div class="loading-spinner"></div>
+                <div>Loading waveform...</div>
+            </div>
+        </div>
     </div>
 
     <!-- Page Navigation -->
@@ -406,10 +457,19 @@
         
                 currentAudio = audioElement;
         
-                // 确保波形数据已加载
-                const waveformData = await getWaveformData(audioElement);
-                if (waveformData) {
-                    drawWaveform(waveformData);
+                // 显示加载动画
+                showLoading(true);
+                hideWaveform();
+        
+                // 加载波形数据
+                try {
+                    const waveformData = await getWaveformData(audioElement);
+                    if (waveformData) {
+                        drawWaveform(waveformData);
+                        showWaveform();
+                    }
+                } finally {
+                    showLoading(false);
                 }
         
                 // 播放音频
@@ -418,17 +478,36 @@
                     updateProgress(audioElement);
                 } catch (playError) {
                     console.error('播放失败:', playError);
-                    // 尝试重新加载并播放
                     audioElement.load();
                     await audioElement.play();
                     updateProgress(audioElement);
                 }
             } catch (error) {
                 console.error('音频处理失败:', error);
+                showLoading(false);
                 alert('音频播放出错，请重试');
             }
         }
 
+        function showLoading(show) {
+            const loading = document.getElementById('waveform-loading');
+            if (show) {
+                loading.classList.add('active');
+            } else {
+                loading.classList.remove('active');
+            }
+        }
+
+        function showWaveform() {
+            const canvas = document.getElementById('waveform-canvas');
+            canvas.classList.add('active');
+        }
+
+        function hideWaveform() {
+            const canvas = document.getElementById('waveform-canvas');
+            canvas.classList.remove('active');
+        }
+        
         async function showWaveform(audioElement) {
             try {
                 const response = await fetch(audioElement.src);
@@ -492,9 +571,7 @@
             }
         
             // 清除波形图和进度条
-            const canvas = document.getElementById('waveform-canvas');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hideWaveform();
             document.getElementById('waveform-progress').style.width = '0%';
         
             // 切换页面
@@ -516,11 +593,16 @@
             ];
         
             // 异步预加载所有音频的波形数据
-            for (const id of audioIds) {
-                const audio = document.getElementById(id);
-                if (audio) {
-                    getWaveformData(audio).catch(console.error);
+            showLoading(true);
+            try {
+                for (const id of audioIds) {
+                    const audio = document.getElementById(id);
+                    if (audio) {
+                        await getWaveformData(audio);
+                    }
                 }
+            } finally {
+                showLoading(false);
             }
         }
         // 预加载音频数据
