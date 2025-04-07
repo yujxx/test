@@ -306,33 +306,65 @@
         });
 
         let currentAudio = null;
+        const waveformCache = new Map();
+
+        // 获取音频波形数据
+        async function getAudioData(audioUrl) {
+            if (waveformCache.has(audioUrl)) {
+                return waveformCache.get(audioUrl);
+            }
+        
+            try {
+                const response = await fetch(audioUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // 获取音频数据
+                const channelData = audioBuffer.getChannelData(0);
+                const samples = 1000; // 采样点数
+                const blockSize = Math.floor(channelData.length / samples);
+                const dataPoints = [];
+        
+                for (let i = 0; i < samples; i++) {
+                    let blockStart = blockSize * i;
+                    let sum = 0;
+                    
+                    // 计算每个块的平均值
+                    for (let j = 0; j < blockSize; j++) {
+                        sum += Math.abs(channelData[blockStart + j]);
+                    }
+                    dataPoints.push(sum / blockSize);
+                }
+        
+                waveformCache.set(audioUrl, dataPoints);
+                return dataPoints;
+            } catch (error) {
+                console.error('Failed to load audio data:', error);
+                return null;
+            }
+        }
 
         async function playAudio(id) {
-            initAudioContext();
-            
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio.currentTime = 0;
+            try {
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                }
+        
+                const audioElement = document.getElementById(id);
+                currentAudio = audioElement;
+        
+                // 获取并绘制波形图
+                const waveformData = await getAudioData(audioElement.src);
+                drawWaveform(waveformData);
+        
+                // 播放音频
+                await audioElement.play();
+                updateProgress(audioElement);
+            } catch (error) {
+                console.error('播放失败:', error);
             }
-            
-            currentAudio = document.getElementById(id);
-            
-            // 断开之前的连接
-            if (currentAudio.source) {
-                currentAudio.source.disconnect();
-            }
-            
-            // 创建新的媒体源
-            const source = audioContext.createMediaElementSource(currentAudio);
-            currentAudio.source = source;
-            
-            // 连接音频节点
-            source.connect(analyser);
-            analyser.connect(audioContext.destination);
-            
-            // 开始播放并绘制波形
-            currentAudio.play();
-            drawWaveform();
         }
 
         function updateRating(system, value) {
@@ -347,61 +379,59 @@
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
-                // 清除波形
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
-
+        
+            // 清除波形图
+            const canvas = document.getElementById('waveform-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('waveform-progress').style.width = '0%';
+        
+            // 切换页面
             document.querySelectorAll('.test-page').forEach(page => 
                 page.classList.remove('active'));
             document.querySelectorAll('.page-btn').forEach(btn => 
                 btn.classList.remove('active'));
-
+        
             document.getElementById(testPages[pageIndex].id).classList.add('active');
             document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
         }
 
-        function drawWaveform() {
-            if (!currentAudio || currentAudio.paused) {
-                return;
-            }
+        function drawWaveform(dataPoints) {
+            const canvas = document.getElementById('waveform-canvas');
+            const ctx = canvas.getContext('2d');
         
-            // 调整画布尺寸
+            // 设置画布尺寸
             canvas.width = canvas.parentElement.clientWidth;
             canvas.height = canvas.parentElement.clientHeight;
-            
-            // 获取音频数据
-            analyser.getByteTimeDomainData(dataArray);
-            
+        
             // 清除画布
             ctx.fillStyle = '#f5f5f5';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+        
+            if (!dataPoints || dataPoints.length === 0) return;
+        
             // 绘制波形
+            const width = canvas.width;
+            const height = canvas.height;
+            const step = width / dataPoints.length;
+            const middleY = height / 2;
+            const scale = height / 2; // 缩放因子
+        
             ctx.beginPath();
-            ctx.lineWidth = 2;
             ctx.strokeStyle = '#2196F3';
-            
-            const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
-            let x = 0;
-            
-            for (let i = 0; i < analyser.frequencyBinCount; i++) {
-                const v = dataArray[i] / 128.0;
-                const y = v * canvas.height / 2;
+            ctx.lineWidth = 2;
+        
+            dataPoints.forEach((point, i) => {
+                const x = i * step;
+                const y = middleY + (point * scale);
+                const y2 = middleY - (point * scale);
                 
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-                
-                x += sliceWidth;
-            }
-            
-            ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.moveTo(x, middleY + (point * scale));
+                ctx.lineTo(x, middleY - (point * scale));
+            });
+        
             ctx.stroke();
-            
-            // 循环绘制
-            requestAnimationFrame(drawWaveform);
         }
 
         function updateProgress(audio) {
