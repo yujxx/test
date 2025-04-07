@@ -198,6 +198,22 @@
     <button class="submit-btn" onclick="submitResults()">Submit All Results</button>
 
     <script>
+        let audioContext;
+        let analyser;
+        let dataArray;
+        const canvas = document.getElementById('waveform-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 初始化音频上下文
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+        }
+        
         // Test data structure 
         const testPages = [
             {
@@ -281,13 +297,32 @@
 
         let currentAudio = null;
 
-        function playAudio(id) {
+        async function playAudio(id) {
+            initAudioContext();
+            
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
+            
             currentAudio = document.getElementById(id);
+            
+            // 断开之前的连接
+            if (currentAudio.source) {
+                currentAudio.source.disconnect();
+            }
+            
+            // 创建新的媒体源
+            const source = audioContext.createMediaElementSource(currentAudio);
+            currentAudio.source = source;
+            
+            // 连接音频节点
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            // 开始播放并绘制波形
             currentAudio.play();
+            drawWaveform();
         }
 
         function updateRating(system, value) {
@@ -302,6 +337,8 @@
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
+                // 清除波形
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
 
             document.querySelectorAll('.test-page').forEach(page => 
@@ -313,30 +350,58 @@
             document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
         }
 
-        function updateWaveform(audio) {
-            document.getElementById('waveform-progress').style.width = '0%';
-            
-            const canvas = document.getElementById('waveform-canvas');
+        function drawWaveform() {
+            if (!currentAudio || currentAudio.paused) {
+                return;
+            }
+        
+            // 调整画布尺寸
             canvas.width = canvas.parentElement.clientWidth;
             canvas.height = canvas.parentElement.clientHeight;
             
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 获取音频数据
+            analyser.getByteTimeDomainData(dataArray);
+            
+            // 清除画布
+            ctx.fillStyle = '#f5f5f5';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制波形
             ctx.beginPath();
+            ctx.lineWidth = 2;
             ctx.strokeStyle = '#2196F3';
             
-            ctx.moveTo(0, canvas.height/2);
-            for(let x = 0; x < canvas.width; x++) {
-                ctx.lineTo(x, (canvas.height/2) + 
-                    Math.sin(x/30) * 30 * Math.random());
+            const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
+            let x = 0;
+            
+            for (let i = 0; i < analyser.frequencyBinCount; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
             }
+            
+            ctx.lineTo(canvas.width, canvas.height / 2);
             ctx.stroke();
+            
+            // 循环绘制
+            requestAnimationFrame(drawWaveform);
         }
 
         function updateProgress(audio) {
-            const progress = (audio.currentTime / audio.duration) * 100;
-            document.getElementById('waveform-progress').style.width = `${progress}%`;
+            if (!audio.paused) {
+                const progress = (audio.currentTime / audio.duration) * 100;
+                document.getElementById('waveform-progress').style.width = `${progress}%`;
+                requestAnimationFrame(() => updateProgress(audio));
+            }
         }
+
 
         function submitResults() {
             const results = {};
