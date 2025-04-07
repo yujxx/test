@@ -181,7 +181,7 @@
     <button class="submit-btn" onclick="submitResults()">Submit All Results</button>
 
     <script>
-        let audioContext;
+        let audioContext = null;
         let analyser;
         let dataArray;
         const canvas = document.getElementById('waveform-canvas');
@@ -191,11 +191,50 @@
         function initAudioContext() {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 2048;
-                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+            return audioContext;
+        }
+
+        async function loadAudioData(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                const context = initAudioContext();
+                const audioBuffer = await context.decodeAudioData(arrayBuffer);
+                return audioBuffer;
+            } catch (error) {
+                console.error('加载音频失败:', error);
+                return null;
             }
         }
+
+        async function getWaveformData(audioElement) {
+            if (!audioElement.src) {
+                console.error('音频源无效');
+                return null;
+            }
+        
+            try {
+                if (waveformCache.has(audioElement.src)) {
+                    return waveformCache.get(audioElement.src);
+                }
+        
+                const audioBuffer = await loadAudioData(audioElement.src);
+                if (!audioBuffer) return null;
+        
+                const channelData = audioBuffer.getChannelData(0);
+                waveformCache.set(audioElement.src, channelData);
+                return channelData;
+            } catch (error) {
+                console.error('获取波形数据失败:', error);
+                return null;
+            }
+        }
+
+
         
         // Test data structure 
         const testPages = [
@@ -347,26 +386,49 @@
 
         async function playAudio(id) {
             try {
-                // 停止当前播放的音频
-                if (currentAudio) {
-                    currentAudio.pause();
-                    currentAudio.currentTime = 0;
+                const audioElement = document.getElementById(id);
+                if (!audioElement) {
+                    throw new Error('找不到音频元素');
                 }
         
-                const audioElement = document.getElementById(id);
+                // 停止当前播放的音频
+                if (currentAudio && currentAudio !== audioElement) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                    document.getElementById('waveform-progress').style.width = '0%';
+                }
+        
+                // 如果是同一个音频被再次点击，则切换播放/暂停状态
+                if (currentAudio === audioElement && !audioElement.paused) {
+                    audioElement.pause();
+                    return;
+                }
+        
                 currentAudio = audioElement;
         
-                // 确保音频数据已加载
-                const channelData = await preloadAudioData(audioElement);
-                drawWaveform(channelData);
+                // 确保波形数据已加载
+                const waveformData = await getWaveformData(audioElement);
+                if (waveformData) {
+                    drawWaveform(waveformData);
+                }
         
                 // 播放音频
-                await audioElement.play();
-                updateProgress(audioElement);
+                try {
+                    await audioElement.play();
+                    updateProgress(audioElement);
+                } catch (playError) {
+                    console.error('播放失败:', playError);
+                    // 尝试重新加载并播放
+                    audioElement.load();
+                    await audioElement.play();
+                    updateProgress(audioElement);
+                }
             } catch (error) {
-                console.error('播放失败:', error);
+                console.error('音频处理失败:', error);
+                alert('音频播放出错，请重试');
             }
         }
+
         async function showWaveform(audioElement) {
             try {
                 const response = await fetch(audioElement.src);
@@ -423,13 +485,13 @@
             barValue.textContent = value;
         }
 
-        function switchPage(pageIndex) {
+        async function switchPage(pageIndex) {
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
         
-            // 清除波形图
+            // 清除波形图和进度条
             const canvas = document.getElementById('waveform-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -441,10 +503,26 @@
             document.querySelectorAll('.page-btn').forEach(btn => 
                 btn.classList.remove('active'));
         
-            document.getElementById(testPages[pageIndex].id).classList.add('active');
+            const newPage = testPages[pageIndex];
+            document.getElementById(newPage.id).classList.add('active');
             document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
+        
+            // 预加载新页面的音频
+            const audioIds = [
+                `${newPage.id}-ref`,
+                `${newPage.id}-sys1`,
+                `${newPage.id}-sys2`,
+                `${newPage.id}-sys3`
+            ];
+        
+            // 异步预加载所有音频的波形数据
+            for (const id of audioIds) {
+                const audio = document.getElementById(id);
+                if (audio) {
+                    getWaveformData(audio).catch(console.error);
+                }
+            }
         }
-
         // 预加载音频数据
         async function preloadAudioData(audioElement) {
             if (waveformCache.has(audioElement.src)) {
@@ -480,11 +558,11 @@
         
             if (!channelData) return;
         
-            // 绘制波形
             const width = canvas.width;
             const height = canvas.height;
             const step = Math.ceil(channelData.length / width);
             const amp = height / 2;
+            const middle = height / 2;
         
             ctx.beginPath();
             ctx.strokeStyle = '#2196F3';
@@ -501,8 +579,10 @@
                         if (datum > max) max = datum;
                     }
                 }
-                ctx.moveTo(i, (1 + min) * amp);
-                ctx.lineTo(i, (1 + max) * amp);
+                const scaledMin = middle + (min * amp * 0.8);
+                const scaledMax = middle + (max * amp * 0.8);
+                ctx.moveTo(i, scaledMin);
+                ctx.lineTo(i, scaledMax);
             }
         
             ctx.stroke();
@@ -528,6 +608,24 @@
             console.log('Test results:', results);
             alert('Results submitted! Check console for details.');
         }
+
+        window.addEventListener('load', () => {
+            const firstPage = testPages[0];
+            const audioIds = [
+                `${firstPage.id}-ref`,
+                `${firstPage.id}-sys1`,
+                `${firstPage.id}-sys2`,
+                `${firstPage.id}-sys3`
+            ];
+        
+            // 异步预加载所有音频的波形数据
+            for (const id of audioIds) {
+                const audio = document.getElementById(id);
+                if (audio) {
+                    getWaveformData(audio).catch(console.error);
+                }
+            }
+        });
     </script>
 </body>
 </html>
