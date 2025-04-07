@@ -79,17 +79,61 @@
             cursor: pointer;
         }
 
-        .rating-container {
+        .rating-dashboard {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .rating-bars {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            height: 200px;
+            align-items: flex-end;
+        }
+
+        .rating-bar {
+            flex: 1;
+            background: #e0e0e0;
             position: relative;
-            padding: 20px 0;
+            transition: height 0.3s;
+        }
+
+        .rating-bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .rating-bar-value {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 14px;
         }
 
         .rating-labels {
+            position: absolute;
+            left: -80px;
+            height: 100%;
             display: flex;
+            flex-direction: column;
             justify-content: space-between;
-            margin-bottom: 5px;
-            color: #666;
             font-size: 14px;
+            color: #666;
+        }
+
+        .rating-container {
+            position: relative;
+            padding: 20px 0;
         }
 
         .rating-slider {
@@ -117,6 +161,34 @@
         <canvas id="waveform-canvas"></canvas>
     </div>
 
+    <!-- Rating Dashboard -->
+    <div class="rating-dashboard">
+        <h3>Rating Overview</h3>
+        <div style="position: relative;">
+            <div class="rating-labels">
+                <span>Excellent (100)</span>
+                <span>Good (80)</span>
+                <span>Fair (60)</span>
+                <span>Poor (40)</span>
+                <span>Bad (20)</span>
+            </div>
+            <div class="rating-bars">
+                <div class="rating-bar" id="bar-system1" style="height: 0%">
+                    <div class="rating-bar-value">0</div>
+                    <div class="rating-bar-label">System 1</div>
+                </div>
+                <div class="rating-bar" id="bar-system2" style="height: 0%">
+                    <div class="rating-bar-value">0</div>
+                    <div class="rating-bar-label">System 2</div>
+                </div>
+                <div class="rating-bar" id="bar-system3" style="height: 0%">
+                    <div class="rating-bar-value">0</div>
+                    <div class="rating-bar-label">System 3</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Page Navigation -->
     <div class="page-nav" id="page-nav"></div>
 
@@ -126,23 +198,21 @@
     <button class="submit-btn" onclick="submitResults()">Submit All Results</button>
 
     <script>
-        // Test data structure
+        // Test data structure 
         const testPages = [
             {
                 id: 'page1',
-                reference: 'REF_AUDIO_URL_1',
-                samples: [
-                    {id: 'p1s1', url: 'SAMPLE_1_URL'},
-                    {id: 'p1s2', url: 'SAMPLE_2_URL'},
-                    {id: 'p1s3', url: 'SAMPLE_3_URL'},
-                    {id: 'p1s4', url: 'SAMPLE_4_URL'},
-                    {id: 'p1s5', url: 'SAMPLE_5_URL'}
-                ]
+                audioIndex: '1',
             },
-            // Add more pages as needed
+            {
+                id: 'page2', 
+                audioIndex: '2',
+            },
+            {
+                id: 'page3',
+                audioIndex: '3',
+            }
         ];
-
-        const ratingLabels = ['Bad', 'Poor', 'Fair', 'Good', 'Excellent'];
 
         // Generate page navigation
         const pageNav = document.getElementById('page-nav');
@@ -163,32 +233,47 @@
                         <h3>Reference Audio</h3>
                         <div class="audio-controls">
                             <button class="play-btn" onclick="playAudio('${page.id}-ref')">Play</button>
-                            <audio id="${page.id}-ref" src="${page.reference}" 
+                            <audio id="${page.id}-ref" src="reference/${page.audioIndex}.wav" 
                                    onplay="updateWaveform(this)" 
                                    ontimeupdate="updateProgress(this)"></audio>
                         </div>
                     </div>
 
-                    ${page.samples.map((sample, index) => `
-                        <div class="audio-section">
-                            <h3>Test Sample ${index + 1}</h3>
-                            <div class="audio-controls">
-                                <button class="play-btn" onclick="playAudio('${sample.id}')">Play</button>
-                                <audio id="${sample.id}" src="${sample.url}"
-                                       onplay="updateWaveform(this)"
-                                       ontimeupdate="updateProgress(this)"></audio>
-                            </div>
-                            <div class="rating-container">
-                                <div class="rating-labels">
-                                    ${ratingLabels.map((label, i) => 
-                                        `<span>${label}</span>`).join('')}
-                                </div>
-                                <input type="range" class="rating-slider" 
-                                       id="rating-${sample.id}" 
-                                       min="0" max="100" step="1" value="50">
-                            </div>
+                    <div class="audio-section">
+                        <h3>Test Samples</h3>
+                        <div class="audio-controls">
+                            <button class="play-btn" onclick="playAudio('${page.id}-sys1')">System 1</button>
+                            <input type="range" class="rating-slider" 
+                                   id="rating-${page.id}-sys1" 
+                                   min="0" max="100" step="1" value="50"
+                                   oninput="updateRating('system1', this.value)">
+                            <audio id="${page.id}-sys1" src="system1/${page.audioIndex}.wav"
+                                   onplay="updateWaveform(this)"
+                                   ontimeupdate="updateProgress(this)"></audio>
                         </div>
-                    `).join('')}
+                        
+                        <div class="audio-controls">
+                            <button class="play-btn" onclick="playAudio('${page.id}-sys2')">System 2</button>
+                            <input type="range" class="rating-slider" 
+                                   id="rating-${page.id}-sys2" 
+                                   min="0" max="100" step="1" value="50"
+                                   oninput="updateRating('system2', this.value)">
+                            <audio id="${page.id}-sys2" src="system2/${page.audioIndex}.wav"
+                                   onplay="updateWaveform(this)"
+                                   ontimeupdate="updateProgress(this)"></audio>
+                        </div>
+
+                        <div class="audio-controls">
+                            <button class="play-btn" onclick="playAudio('${page.id}-sys3')">System 3</button>
+                            <input type="range" class="rating-slider" 
+                                   id="rating-${page.id}-sys3" 
+                                   min="0" max="100" step="1" value="50"
+                                   oninput="updateRating('system3', this.value)">
+                            <audio id="${page.id}-sys3" src="system3/${page.audioIndex}.wav"
+                                   onplay="updateWaveform(this)"
+                                   ontimeupdate="updateProgress(this)"></audio>
+                        </div>
+                    </div>
                 </div>
             `;
             pagesContainer.insertAdjacentHTML('beforeend', pageHTML);
@@ -205,14 +290,20 @@
             currentAudio.play();
         }
 
+        function updateRating(system, value) {
+            const bar = document.getElementById(`bar-${system}`);
+            const barValue = bar.querySelector('.rating-bar-value');
+            
+            bar.style.height = value + '%';
+            barValue.textContent = value;
+        }
+
         function switchPage(pageIndex) {
-            // Stop any playing audio
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
 
-            // Update page visibility
             document.querySelectorAll('.test-page').forEach(page => 
                 page.classList.remove('active'));
             document.querySelectorAll('.page-btn').forEach(btn => 
@@ -222,23 +313,18 @@
             document.querySelectorAll('.page-btn')[pageIndex].classList.add('active');
         }
 
-        // Simulated waveform drawing
-        const canvas = document.getElementById('waveform-canvas');
-        const ctx = canvas.getContext('2d');
-
         function updateWaveform(audio) {
-            // Reset progress
             document.getElementById('waveform-progress').style.width = '0%';
             
-            // Simple waveform visualization (you would replace this with actual audio analysis)
+            const canvas = document.getElementById('waveform-canvas');
             canvas.width = canvas.parentElement.clientWidth;
             canvas.height = canvas.parentElement.clientHeight;
             
+            const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.beginPath();
             ctx.strokeStyle = '#2196F3';
             
-            // Generate random waveform (replace with actual audio data)
             ctx.moveTo(0, canvas.height/2);
             for(let x = 0; x < canvas.width; x++) {
                 ctx.lineTo(x, (canvas.height/2) + 
@@ -255,14 +341,14 @@
         function submitResults() {
             const results = {};
             testPages.forEach(page => {
-                results[page.id] = {};
-                page.samples.forEach(sample => {
-                    const rating = document.getElementById(`rating-${sample.id}`).value;
-                    results[page.id][sample.id] = parseInt(rating);
-                });
+                results[page.id] = {
+                    system1: document.getElementById(`rating-${page.id}-sys1`).value,
+                    system2: document.getElementById(`rating-${page.id}-sys2`).value,
+                    system3: document.getElementById(`rating-${page.id}-sys3`).value
+                };
             });
             console.log('Test results:', results);
-            // Here you would add code to save or send the results
+            alert('Results submitted! Check console for details.');
         }
     </script>
 </body>
